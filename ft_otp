@@ -1,7 +1,5 @@
 #!/bin/bash
 
-Digit=6
-
 usage() {
 	echo "Usage: $0 [-g <file>] [-k <key>]" >&2
 }
@@ -9,7 +7,7 @@ usage() {
 main() {
 	parse_args "$@"
 	if [ -n "$gval" ]; then
-		generate_ft_opt
+		generate_ft_otp
 	elif [ -n "$kval" ]; then
 		generate_hotp
 	else
@@ -18,52 +16,50 @@ main() {
 	fi
 }
 
+err_msg() {
+	echo "$0: error: $1" >&2
+}
+
 parse_args() {
 	while getopts 'g:k:' name; do
 		case "$name" in
 			g) gval="$OPTARG";;
 			k) kval="$OPTARG" ;;
-			*) usage ; exit 1 ;;
+			*) usage ; exit 2 ;;
 		esac
 	done
 }
 
-generate_ft_opt() {
-	echo '[TODO] Generate ft_otp'
+crypt() {
+	local salt="1acab60b8d1820ec"
+	opts=(
+		-aes-256-cbc
+		-pbkdf2
+		-S "$salt"
+		-pass file:password
+	)
+	openssl enc "${opts[@]}" "$@"
+}
+
+generate_ft_otp() {
+	if ! [ -e "$gval" ]; then
+		err_msg "file '$gval' does not exist."
+		exit 1
+	elif ! cat "$gval" | grep -qE '^[0-9a-fA-F]{64}$'; then
+		err_msg "key must be 64 hexadecimal characters."
+		exit 1
+	fi
+	crypt -in "$gval" -out ft_otp.key
+	echo "Key was successfully saved in ft_otp.key."
 }
 
 generate_hotp() {
-	echo '[TODO] Generate HOTP'
-}
-
-hotp() {
-	local key="$1" counter="$2"
-	HS=$(HMAC_SHA_1 "$key" "$counter")
-	Sbits="$(DT "$HS")"
-	Snum="$(StToNum "$Sbits")"
-	D="$((Snum % (10 ** Digit)))"
-	echo "$D"
-}
-
-HMAC_SHA_1() {
-	local key="$1" txt="$2"
-	echo -n "$txt" | openssl sha1 -hmac "$key" | cut -f 2 -d ' '
-}
-
-DT() {
-	String="$(echo -n "$1" | tr '[:lower:]' '[:upper:]')"
-	OffsetBits="${String:39:1}"
-	Offset="$((16#$OffsetBits * 2))"
-	P="${String:$Offset:8}"
-	echo "obase=16;ibase=10;$((16#$P & 16#7fffffff))" \
-		| bc \
-		| tr '[:upper:]' '[:lower:]' \
-		| tr -d '\n'
-}
-
-StToNum() {
-	St="$(echo -n "$1" | tr '[:lower:]' '[:upper:]')"
-	echo "obase=10;ibase=16;$St" | bc | tr -d '\n'
+	if ! [ -e "$kval" ]; then
+		err_msg "file '$kval' does not exist."
+		exit 1
+	fi
+	counter="$(($(date +%s) / 30))"
+	bash hotp.sh "$counter" "$(cat key.txt)"
 }
 
 main "$@"

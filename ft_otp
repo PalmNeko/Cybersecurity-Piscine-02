@@ -30,15 +30,12 @@ parse_args() {
 	done
 }
 
-crypt() {
-	local salt="1acab60b8d1820ec"
-	opts=(
-		-aes-256-cbc
-		-pbkdf2
-		-S "$salt"
-		-pass file:password
-	)
-	openssl enc "${opts[@]}" "$@"
+encrypt() {
+	gpg --batch --yes -o "$2" -c "$1"
+}
+
+decrypt() {
+	gpg --batch --yes -qd "$1"
 }
 
 generate_ft_otp() {
@@ -49,7 +46,7 @@ generate_ft_otp() {
 		err_msg "key must be 64 hexadecimal characters."
 		exit 1
 	fi
-	crypt -in "$gval" -out ft_otp.key
+	encrypt "$gval" ft_otp.key || { err_msg "failed to encrypt key."; exit 1; }
 	echo "Key was successfully saved in ft_otp.key."
 }
 
@@ -59,7 +56,7 @@ generate_hotp() {
 		exit 1
 	fi
 	counter="$(($(date +%s) / 30))"
-	bash hotp.sh "$counter" "$(cat key.txt)"
+	bash hotp.sh "$counter" "$(decrypt "$kval")"
 }
 
 main "$@"
